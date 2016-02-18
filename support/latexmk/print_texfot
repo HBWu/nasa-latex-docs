@@ -1,0 +1,98 @@
+#! /usr/bin/env bash
+# Usage: ./print_texfot <path to texfot output file>
+# Purpose: Utility function to print texfot output in more meaningful manner
+
+# Try to be smart about error/warning reporting  
+function print_texfot {
+
+   # Make sure the file exists
+   if [ ! -f "$path2texfot" ]; then
+      printf 'No texfot.out file found at: %s\n\n' "$path2texfot";
+      exit 1
+   fi
+
+   # Go to the tmp directory where texfot file resides
+   cd "$(dirname "$path2texfot")"
+    
+   # Copy the texfot output to a "mini" file that will get pruned for important content
+   cp "$path2texfot" texfot.min
+
+   # This error would occur if absolutely no text was provided in between begin/end document
+   contentError="Error: No text content found between begin{document} and end{document}"
+
+   # Remove specific warnings which are not indicative of actual issues
+   # Some are artifacts of nasa-latex-docs.cls and some are messages from latexmk
+   sed -i backup "/This is pdfTeX/d"                         texfot.min
+   sed -i backup "/Using fall-back/d"                        texfot.min 
+   sed -i backup "/Please rerun BibTeX/d"                    texfot.min
+   sed -i backup "/Please rerun LaTeX/d"                     texfot.min
+   sed -i backup "/Please (re)run BibTeX/d"                  texfot.min
+   sed -i backup "/There were undefined references/d"        texfot.min
+   sed -i backup 's/pdfTeX warning/\'$'\npdfTeX warning/g'   texfot.min
+   sed -i backup "/invoking/d"                               texfot.min
+   sed -i backup "s/No pages of output/$contentError/g"      texfot.min
+   sed -i backup "s/(see the transcript file for additional information)//g" texfot.min
+
+   # Remove the underfull/overfull warnings - will add back with more detail from log file
+   sed -i backup "/Underfull/d"                              texfot.min
+   sed -i backup "/Overfull/d"                               texfot.min
+   sed -i backup '/^\s*$/d'                                  texfot.min
+
+   # Remove the backup sed file
+   rm -f "texfot.minbackup"
+
+   # Define environment frep options
+   export GREP_OPTIONS='--color=auto --ignore-case -E'
+
+   # Print header based on return code from latexmk
+   if [ $return_code_from_latexmk = 0 ] ; then
+      printf '\n|------------------------ Log Summary -------------------------|\n';
+   else
+      printf '\n\e[1;31m|--------------------- ERROR During Build ---------------------|\e[0m \n';
+   fi
+
+   # Print the logfile where more information may be found
+   printf 'Log File: %s \n' "$INPUT_LOG_PATH";
+
+   # Do a grep in the log file for underfull/overfull and print out more detail
+   export GREP_COLOR='1;33;48' # Warning color
+   grep -A 1 "Underfull|Overfull" "$INPUT_LOG_PATH" >> texfot.min
+   
+   # Loop through each remaining line of texfot file and print with keywords highlighted
+   while read line; do
+
+      # Warnings that don't cause build failures
+      export GREP_COLOR='1;33;48' # Warning color
+      echo "$line" | grep "LaTeX Warning|Warning|pdfTeX warning|Underfull|Overfull" 
+      if [ $? = 0 ] ; then 
+         continue # Warning found, continue to next line
+      else
+         # Errors that do cause build failures
+         export GREP_COLOR='1;31;48' # Error color
+         echo "$line" | grep "Missing|Undefined control sequence|Error|LaTeX Error|Too many|You can't'"
+         if [ $? = 0 ] ; then
+            continue # Error found, continue to next line
+         else
+            if [[ ! -z "${line// }" ]] ; then
+               echo "$line" # No matches, just print line contents - as long as not empty
+            fi
+         fi
+      fi
+   done <texfot.min
+
+   if [ $return_code_from_latexmk = 0 ] ; then
+      printf "|--------------------------------------------------------------|\n\n";
+   else
+      printf '\e[1;31m|--------------------------------------------------------------|\e[0m\n\n';
+   fi
+
+return 0;
+
+}
+
+# Define the input as variable name
+path2texfot=$1 
+return_code_from_latexmk=$2
+
+# Invoke function
+print_texfot $path2texfot $return_code_from_latexmk

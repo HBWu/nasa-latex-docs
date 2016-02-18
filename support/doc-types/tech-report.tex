@@ -1,0 +1,51 @@
+% Create Title Page ----------------------------------------------------------
+\AtBeginDocument{
+\newpage \clearpage
+
+% Add a PDF bookmark in PDF viewer 
+\phantomsection
+\pdfbookmark[1]{Cover Page}{cover}
+
+% Create graphics at the top of the page
+\begin{minipage}{0.25\textwidth}
+   \begin{flushleft}
+      \includegraphics[height=1in]{\@docLogo}
+   \end{flushleft}
+\end{minipage}%
+\begin{minipage}{0.7\textwidth}
+   \centering\Large\textbf{\@docTypeTitle \\ \docTypeName}
+\end{minipage}%
+
+\vspace{\baselineskip}
+{\color{black}\hrule height 1pt}
+
+% Create graphics at the top of the page
+% \begin{minipage}{.24\textwidth}
+%    \begin{flushleft}
+%       \includegraphics[height=1in]{\docLogo}
+%    \end{flushleft}
+% \end{minipage}
+% \begin{minipage}{.74\textwidth}
+%    \centering
+%    \Large \textbf{\@docType}
+% \end{minipage}
+
+% Draw black line
+\vfill
+{\color{black}\hrule height 6pt}
+
+\vspace{\baselineskip}
+
+\begin{center}
+   \iftoggle{Export}{
+   \footnotesize \textbf{Export Controlled Information}
+   \iftoggle{SBU}{\textbf{- SBU}}{}
+   \iftoggle{ITAR}{\textbf{- ITAR}}{}
+   }{}
+
+\end{center}
+
+
+\thispagestyle{empty} \newpage
+
+}

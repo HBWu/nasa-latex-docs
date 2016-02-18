@@ -1,0 +1,302 @@
+#! /usr/bin/env bash
+# Usage: ./buildPDF example.tex
+# Purpose: Single bash script to cleanly build LaTeX PDF and remove auxiliary files
+
+###################################################
+# Make sure some TeX distribution is installed
+###################################################
+
+export REPO_VERSION="January 15, 2017 - v1.0"
+
+###################################################
+# Determine location of nasa-latex-docs directory
+###################################################
+
+# Extra code to check for and follow symbolic links
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+export BUILDPDF_PWD="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+###################################################
+# Make sure some TeX distribution is installed
+###################################################
+
+which tex >> /dev/null;
+
+if [ $? = 1 ] ; then
+   printf '\n\e[1;31mERROR: No TeX distribution installation found\e[0;31m\e[0m \n'
+   exit 1
+fi
+
+###################################################
+# Check the current TeX version
+###################################################
+
+# Get TeX version
+export TEX_VERSION="$(tex --version | head -1 )"
+
+# Check to see if it is a compatible version
+tex --version | grep '2015\|2016\|2017\|2018\|2019\|2020' >> /dev/null;
+
+if [ $? = 0 ] ; then
+   printf '\e[1;34mnasa-latex-docs  Version:\e[0;34m %s\e[0m \n' "$REPO_VERSION"
+   printf '\e[1;34mTeX Distribution Version:\e[0;34m %s\e[0m \n' "$TEX_VERSION"
+
+else 
+   printf '\n\e[1;31mERROR: Outdated TeX Distribution:\e[0;31m %s\e[0m \n' "$TEX_VERSION"
+   printf 'nasa-latex-docs requires TeX distribution versions of 2015+\n\n'
+   exit 1;
+fi
+
+###################################################
+# Check if input file passed in
+###################################################
+
+# Check if there is a file input, else exit
+if [ -z "$1" ]; then
+   printf '\n\e[1;31mERROR: Input File Not Supplied\e[0m \n';
+   printf 'No buildable .tex file supplied as input, example usage:\n';
+   printf ' \e[0;30m%s/buildPDF template.tex \e[0m \n\n'  "$BUILDPDF_PWD"
+   exit 1
+fi
+
+###################################################
+# Make sure the user provided filename exists
+################################################### 
+ 
+if [ ! -f "$1" ] && [ ! -f "$1.tex" ]; then
+   printf '\n\e[1;31mERROR: Input File Not Found\e[0m \n';
+   printf 'No "%s" file found in: %s\n\n' "$1" "$(pwd)";
+   exit 1
+else
+   input_abs_path="$(cd "$(dirname "$1")"; pwd)/$(basename "$1")"
+   
+   # If not .tex extension provided as user input, add it
+   if [ ! -f "$input_abs_path" ]; then
+      input_abs_path="$input_abs_path.tex"
+   fi
+
+   input_dir_path="$(dirname "$input_abs_path")"
+   # Go to the directory where this file exists
+   cd "$input_dir_path"
+fi
+
+###################################################
+# Determine if "TEX root" is defined
+################################################### 
+
+# Look for comment in file passed to buildPDF
+TeX_root="$(grep -i "tex root =" "$input_abs_path")";
+
+if [ $? = 0 ] ; then
+   # Find the user specified file name
+   TeX_root="$(cut -d "=" -f 2 <<< "$TeX_root")";
+
+   # Rename using "echo" to strip any leading spaces
+   TeX_root="$(echo $TeX_root)"
+
+   # Determine if the file exists
+   if [ ! -f $TeX_root ]; then
+      printf '\n\e[1;31mERROR: TeX Root File Not Found\e[0m \n';
+      printf 'No "%s" file found in: %s\n\n' "$TeX_root" "$(pwd)";
+      exit 1
+   else
+      # Change the path information to new TEX root file
+      input_abs_path="$(cd "$(dirname "$TeX_root")"; pwd)/$(basename "$TeX_root")"
+      input_dir_path="$(dirname "$input_abs_path")"
+
+      printf '\e[1;34mTeX Root Document Found..\e[0;34m %s\e[0m \n' "$input_abs_path";
+
+      # Go to the directory where this file exists
+      cd "$input_dir_path"
+
+      # Rename the input file as this new TEX root file
+      input_tex=$TeX_root;
+      input_tex_clean=$(basename $TeX_root .tex)
+   fi
+else 
+
+   input_tex=$1;
+   input_tex_clean=$(basename $1 .tex)
+fi
+
+###################################################
+# Parse the command line inputs
+###################################################
+
+# Define fast build as false
+fast_build=false
+
+# Initialize some environment variables
+export CONTINUOUS_PREVIEW=0
+export PREVIEW_PDF=0
+export SILENT=1
+
+for i in "${@:2}" # Skip first element (file name)
+do
+case $i in
+   -o=*|--outputname=*)
+   OUTPUT="${i#*=}"
+   rename_output=true
+   shift # -o argument=value
+   ;;
+   -l=*|--latexpath=*)
+   LATEXPATH="${i#*=}"
+   shift # -l argument=value
+   ;;
+   -p|--preview)
+   # Environment variable to pass to "latexmkrc" config file
+   export PREVIEW_PDF=1
+   shift # -p argument=value
+   ;;
+   -p=*|--preview=*)
+   # Environment variable to pass to "latexmkrc" config file
+   export PREVIEW_PDF=1
+   user_defined_program="$(cut -d "=" -f 2 <<< "$i")"
+   # The -n operator checks whether the string is not null.
+   if [[ -n "$user_defined_program" ]]; then
+      export PREVIEW_PROGRAM="$user_defined_program"
+   fi
+   shift # -p= argument=value
+   ;;
+   -v|--verbose)
+   # Environment variable to pass to "latexmkrc" config file
+   export SILENT=0
+   shift # -v argument=value
+   ;;
+   -f|--force)
+   option_force="-g";
+   shift # -v argument=value
+   ;;
+   -w*|--watch*)
+   # Environment variable to pass to "latexmkrc" config file
+   export CONTINUOUS_PREVIEW=1
+   shift # -w argument=value
+   ;;
+   -c*|--clean*)
+   clean_aux=true
+   shift # -c argument=value
+   ;;
+   *)
+   printf "Invalid User Option: '%s'\n" "$i"
+   exit 1
+   ;;
+esac
+done
+
+# Set the default output file name if one is not passed
+if [ "$rename_output" = true ]; then
+   output_pdf=${OUTPUT}
+   output_pdf_clean=${output_pdf%.*};
+else
+   output_pdf_clean=$input_tex_clean;
+fi
+
+###################################################
+# Define necessary environment paths
+###################################################
+
+# Save current internal field separator setting
+SAVEIFS=$IFS
+
+# Set internal field separator to be line break instead of space character
+IFS=$'\n'
+
+# Get directory of this script and find all sub-directories
+subdirs_BUILDPDF_PWD=$(find $BUILDPDF_PWD -type d | tr '\n' ':')
+
+# Get path of the file being built and find all sub-directories
+subdirs_in_path2texfile=$(find $PWD -type d | tr '\n' ':')
+
+# Recursively add above paths and sub folders to TeX search path
+export TEXINPUTS=$TEXINPUTS$subdirs_BUILDPDF_PWD$subdirs_in_path2texfile
+export TEXMFHOME=$TEXMFHOME$subdirs_BUILDPDF_PWD$subdirs_in_path2texfile
+export BIBINPUTS=$BIBINPUTS$subdirs_BUILDPDF_PWD$subdirs_in_path2texfile
+export XDG_CONFIG_HOME=$BUILDPDF_PWD
+export TEXMFOUTPUT="$input_dir_path/tmp"
+export TMPDIR="$input_dir_path/tmp"
+export INPUT_LOG_PATH="$TMPDIR/$input_tex_clean.log"
+export INPUT_SOURCE_PATH="$input_abs_path"
+
+# LATEXPATH
+
+# For debugging, print environment variable paths on separate lines 
+# echo $TEXINPUTS | tr \: \\n
+
+# Restore internal field separator setting to previous state
+IFS=$SAVEIFS
+
+###################################################
+# Build the pdf
+###################################################
+
+# If clean build option is passed, remove the tmp directory
+if [ "$clean_aux" = true ]; then
+   rm -rf "$TMPDIR"
+fi
+
+# Create the tmp directory just in case it is not already created
+mkdir -p "$TMPDIR" 
+
+# Add folder structure to tmp, just in case path dependencies exists
+find . -type f -name "*.tex" | while read tex_file_found; do
+   tex_file_found_dir="$(dirname $tex_file_found)"
+   mkdir -p tmp/$tex_file_found_dir
+done
+
+# Add blank .bbl file
+touch "$TMPDIR/$input_tex_clean.bbl"
+
+# Environment variable to pass to "latexmkrc" config file
+export OUTPUT_PDF_NAME="$input_dir_path/$output_pdf_clean.pdf"
+export TMP_PDF_NAME="$input_dir_path/tmp/$input_tex_clean.pdf"
+
+# Before running latexmk, make sure PDF has been deleted
+rm -f "$input_dir_path/$output_pdf_clean.pdf"
+rm -f "$input_dir_path/$input_tex_clean.pdf"
+
+# Remove these temporary files before each build
+rm -rf "$TMPDIR/buildPDF.out";
+rm -rf "$TMPDIR/bibtex.out";
+rm -rf "$TMPDIR/pdflatex.out";
+
+# Run Latexmk
+printf '\e[1;34mBuilding (as necessary)..\e[0;34m %s\e[0m \n' "$INPUT_SOURCE_PATH";
+latexmk $input_tex_clean $option_force; 
+return_code_from_latexmk=$?;
+
+# Determine if an error occurred during the build process
+if [ $return_code_from_latexmk = 0 ] ; then
+
+   # Move the PDF file up one level, out of tmp/
+   cp "$TMPDIR/$input_tex_clean.pdf" ${output_pdf_clean}.pdf
+
+   # Only print log if buildPDF not called in continuous mode
+   if [ "$CONTINUOUS_PREVIEW" = 0 ]; then
+      printf '\e[1;32mPDF built successfully...\e[0;32m %s\e[0m \n' "$input_dir_path/$output_pdf_clean.pdf";
+
+      $BUILDPDF_PWD/latexmk/print_texfot "$TMPDIR/texfot.out" $return_code_from_latexmk
+   else
+      printf '\nExiting Continuous Preview Mode...\n\n';
+   fi
+
+   # if [ "$clean_aux" = true ]; then
+   #    # rm -rf $input_dir_path/tmp
+   #    echo "Need a clean"
+   #    rm -f $TMPDIR/{*.acn,*.aux,*.bbl,*.bib,*.blg,*.dvi*,.fdb_latexmk,*.out,*.fls,fot,*.gz,*.log,*.xdy,*.xml}
+   # fi
+
+   exit 0;
+
+else 
+   # Remove any PDF that may have been created
+   rm -f "$input_dir_path/tmp/$output_pdf_clean.pdf"
+
+   $BUILDPDF_PWD/latexmk/print_texfot "$TMPDIR/texfot.out" $return_code_from_latexmk
+
+   exit 1;
+fi

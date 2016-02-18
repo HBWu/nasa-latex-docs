@@ -1,0 +1,139 @@
+# Usage: ./buildPDF example.tex
+# Purpose: Custom latexmk configuration for nasa-latex-docs package
+
+# Initialize environment variables if not already defined
+# These should be getting defined through the buildPDF script
+$ENV{'PREVIEW_PDF'} //= 0;
+$ENV{'CONTINUOUS_PREVIEW'} //= 0;
+$ENV{'OUTPUT_PDF_NAME'} //= %S;
+$ENV{'SILENT'} //= 1;
+
+if ($^O =~ /darwin/) {
+   if ($ENV{'SILENT'} ==0) { print "DIAGNOSTICS = Operating System Detected: Mac OSX\n"; }
+   $ENV{'PREVIEW_PROGRAM'} //= 'preview';
+} elsif ($^O =~ /MSWin32/) {
+   if ($ENV{'SILENT'} ==0) { print "DIAGNOSTICS = Operating System: Windows\n"; }
+   # Set default PDF viewer
+   $ENV{'PREVIEW_PROGRAM'} //= 'gsview32';
+} elsif ($^O =~ /linux/) {
+   if ($ENV{'SILENT'} ==0) { print "DIAGNOSTICS = Operating System: Linux\n"; }
+   $ENV{'PREVIEW_PROGRAM'} //= 'evince';
+}
+
+# Final check if PDF viewer is not defined
+# Place dummy value, latexmk will attempt default viewer from OS
+$ENV{'PREVIEW_PROGRAM'} //= 'DEFAULT';
+
+# Create file containing a list of the files that these programs have read and written
+# For better source file detection
+$recorder   = 1;
+
+# Generate a pdf version of the document using pdflatex
+$pdf_mode   = 1;
+
+# Run latexmk silently, not output to text
+$silent     = $ENV{'SILENT'};
+$quiet      = $ENV{'SILENT'};
+
+# Use bibtex if an appropriate *.bib file exists
+$bibtex_use = 1;
+
+# If nonzero, continue processing past minor latex errors including unrecognized cross references
+$force_mode = 0;
+
+# Pass specific options to bibtex
+$bibtex     = "rm -f '$ENV{'TMPDIR'}'/bibtex.out; bibtex %S >> '$ENV{'TMPDIR'}'/bibtex.out";
+
+# Define all output directories to be "tmp"
+# All build files will now be placed in this directory
+$aux_dir = "tmp";
+$tmpdir  = "tmp";
+$out_dir = 'tmp';
+
+# Commands to run during CONTINUOUS_PREVIEW mode
+$success_cmd = "
+clear;
+cp $ENV{'TMP_PDF_NAME'} $ENV{'OUTPUT_PDF_NAME'};
+printf '\e[1;32mPDF built successfully...\e[0;32m %s\e[0m \n' $ENV{'OUTPUT_PDF_NAME'};
+$ENV{'BUILDPDF_PWD'}/latexmk/print_texfot \"'$ENV{'TMPDIR'}'/texfot.out\" 0;
+";
+
+$compiling_cmd = "
+clear;
+printf '\e[1;34mnasa-latex-docs  Version:\e[0;34m %s\e[0m \n' \"$ENV{'REPO_VERSION'}\";
+printf '\e[1;34mTeX Distribution Version:\e[0;34m %s\e[0m \n' \"$ENV{'TEX_VERSION'}\";
+printf '\e[1;34mBuilding (as necessary)..\e[0;34m %s\e[0m \n' \"$ENV{'INPUT_SOURCE_PATH'}\";
+";
+
+$failure_cmd = "
+clear;
+$ENV{'BUILDPDF_PWD'}/latexmk/print_texfot \"'$ENV{'TMPDIR'}'/texfot.out\" 1;
+";
+
+# Setup previewer options
+if ($ENV{'PREVIEW_PDF'} == 1 || $ENV{'CONTINUOUS_PREVIEW'} == 1) {
+   
+   # Check if continuous preview watch is enabled
+   if ($ENV{'CONTINUOUS_PREVIEW'} == 1) {   
+      $preview_continuous_mode=1;
+      if ($ENV{'SILENT'} ==0) { print "DIAGNOSTICS = Continuous Preview ENABLED\n"; }
+   } else {
+      # This just builds once and auto-reloads the PDF in viewer
+      $preview_mode = 1;
+   }
+   
+   # Type of file to view
+   $view="pdf";
+
+   # Extra file extensions to remove when cleaning
+   # $clean_ext = 'bbl rel %R-blx.bib %R.synctex.gz';
+   
+   # Check to see if there is a defined viewer program to use
+   if ($ENV{'PREVIEW_PROGRAM'} ne "DEFAULT") {
+      # -g option keeps the focus on the window which called the build
+      # -a option to specify what application to use
+      $pdf_previewer="start open -g -a $ENV{'PREVIEW_PROGRAM'}";
+   }
+   if ($ENV{'SILENT'} ==0) { print "DIAGNOSTICS = Preview ENABLED with Program: $ENV{'PREVIEW_PROGRAM'}\n"; }
+}
+
+# Add dependency to build glossaries
+add_cus_dep('glo', 'gls', 0, 'makeglossaries');
+add_cus_dep('acn', 'acr', 0, 'makeglossaries');
+
+sub makeglossaries {
+   my ($base_name, $path) = fileparse( $_[0] );
+   pushd $path;
+   if ( $silent ) {
+      my $return = system "makeglossaries -q $base_name";
+   } else {
+      my $return = system "makeglossaries $base_name";
+   };
+   popd;
+   return $return;
+}
+
+
+# Define options to pass to pdflatex command
+# $pdflatex="pdflatex -interaction=nonstopmode -synctex=1 -file-line-error --shell-escape %O %S >> tmp/pdflatex.out";
+#cd tmp; makeglossaries Project_Report_WAlshahin; cd ../; 
+
+$pdflatex="
+rm -f '$ENV{'TMPDIR'}'/pdflatex.out;
+rm -f '$ENV{'TMPDIR'}'/texfot.out;
+max_print_line=999 texfot --tee='$ENV{'TMPDIR'}'/pdflatex.out pdflatex %O -interaction=nonstopmode -synctex=1 -file-line-error --shell-escape -halt-on-error %S >> tmp/texfot.out
+";
+
+
+# rm -f $ENV{'TMPDIR'}/*out; 
+# pdflatex_return_code=$?;
+# mv *.acn *.aux *.bbl *.bib *.blg *.fdb_latexmk *.fls *.gz *.log *.xdy *.out *.xml $ENV{'TMPDIR'};
+# echo $pdflatex_return_code;
+# Define options to pass to pdflatex command
+
+# $pdflatex="
+# cd $ENV{'TMPDIR'};
+# texfot --tee=$ENV{'TMPDIR'}/pdflatex.out pdflatex -interaction=nonstopmode -synctex=1 -file-line-error --shell-escape %O %S >> $ENV{'TMPDIR'}/texfot.out
+# ";
+
+

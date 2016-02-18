@@ -1,0 +1,49 @@
+\renewcommand{\PREprintbibliography}{\newpage}  
+
+
+% Clear the current header/footer style
+\fancyhf{} 
+
+% Set the current header/footer style
+\pagestyle{fancy}
+
+% Define size of the header/footer text
+\newcommand{\hfsize}{\footnotesize}
+
+% Define the headheight
+\setlength{\headheight}{40pt}
+
+\chead{
+\begin{tabular}{|L{.60\textwidth}|p{.345\textwidth}|}
+   \hline
+   \multicolumn{2}{|c|}{\hfsize\bfseries\@docTypeTitle\thinspace-\thinspace\docTypeName} \\
+   \hline
+   \multirow{2}{*}{\parbox{.60\textwidth}{\hfsize\hangindent=0.37in \raggedright Title: \@docTitle}}  & \hfsize  Document No: \ifdefstring{\@docNumber}{}{N/A}{\@docNumber} \\
+    & \hfsize  Effective Date: \@docDate \\
+   \hline
+\end{tabular}
+\vspace{-22pt}
+}
+
+% Left footer
+\iftoggle{Export}{
+   \lfoot{\hfsize \textbf{Export Controlled Information}}
+   \iftoggle{SBU}{
+   \lfoot{\hfsize \textbf{Export Controlled - SBU}}
+   \iftoggle{ITAR}{
+   \lfoot{\hfsize \textbf{Export Controlled - SBU - ITAR}}
+   }{}
+   }{
+   \iftoggle{ITAR}{
+   \lfoot{\hfsize \textbf{Export Controlled - ITAR}}
+   }{}
+   } 
+}{
+   \lfoot{\hfsize \textbf{\@docFooter}} 
+}
+
+
+
+% Modify the header and footer lines
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{1pt}
